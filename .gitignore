@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# 개인정보 (이력서) — 절대 커밋 금지
+resume.txt
+
+# 생성물
+report.html
+.cache/
+
+# 로그
+*.log
+npm-debug.log*
+
+# 환경변수
+.env
+.env.local
+
+# 에디터/OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 빌드 산출물
+dist/
+build/
+*.tsbuildinfo

@@ -1,0 +1,18 @@
+{
+  "name": "wanted-job-matcher",
+  "version": "2.0.0",
+  "description": "원티드 공고를 이력서 기반으로 로컬 LLM(Ollama)으로 매칭하는 도구",
+  "private": true,
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "start:50": "tsx src/index.ts 50"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.0"
+  },
+  "dependencies": {
+    "ollama": "^0.5.16"
+  }
+}

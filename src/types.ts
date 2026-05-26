@@ -1,0 +1,16 @@
+export interface WantedJob {
+  id: number;
+  position: string;
+  companyName: string;
+  location: string;
+  mainTasks: string;
+  requirements: string;
+  preferredPoints: string;
+}
+
+export interface ScoredJob extends WantedJob {
+  score: number;
+  matchPoints: string[];
+  gaps: string[];
+  summary: string;
+}
