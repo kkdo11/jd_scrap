@@ -10,7 +10,7 @@ async function main(): Promise<void> {
   console.log('╚══════════════════════════════════╝\n');
 
   // 1. 로컬 LLM(Ollama) 사용 안내
-  const model = process.env.OLLAMA_MODEL ?? 'exaone3.5:7.8b';
+  const model = process.env.OLLAMA_MODEL ?? 'gemma4:12b';
   const host = process.env.OLLAMA_HOST ?? 'http://localhost:11434';
   console.log(`🧠 모델: ${model}  (host: ${host})`);
   console.log(`   Ollama 서버가 실행 중이어야 합니다: 'ollama serve' / 'ollama pull ${model}'\n`);
@@ -25,9 +25,9 @@ async function main(): Promise<void> {
   const resume = fs.readFileSync(resumePath, 'utf-8').trim();
   console.log(`✅ 이력서 로드 완료 (${resume.length.toLocaleString()}자)\n`);
 
-  // 3. 공고 수집 (기본 40개, CLI 인자로 조정 가능)
-  const parsedLimit = parseInt(process.argv[2] ?? '40', 10);
-  const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 40;
+  // 3. 공고 수집 (기본 50개, CLI 인자로 조정 가능)
+  const parsedLimit = parseInt(process.argv[2] ?? '50', 10);
+  const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 50;
   if (parsedLimit !== limit) {
     console.warn(`⚠️  잘못된 limit 인자 무시 → 기본값 ${limit} 사용\n`);
   }

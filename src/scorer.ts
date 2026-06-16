@@ -6,11 +6,12 @@ const client = process.env.OLLAMA_HOST
   ? new Ollama({ host: process.env.OLLAMA_HOST })
   : ollama;
 
-// 한국어 이력서×공고 스코어링이라 한국어 네이티브 EXAONE 3.5 7.8B를 기본값으로.
-//  - 먼저 `ollama pull exaone3.5:7.8b` 필요 (Q4_K_M, 약 4.8GB, 16GB GPU에 여유)
-//  - 이미 보유한 'qwen2.5:14b'를 쓰려면 OLLAMA_MODEL=qwen2.5:14b
-//  - 추론(reasoning) 모델(EXAONE Deep, *-r1, qwen3 thinking)은 JSON이 더러워지니 피할 것
-const MODEL = process.env.OLLAMA_MODEL ?? 'exaone3.5:7.8b';
+// 한국어 이력서×공고 스코어링 기본 모델. 단일 운용 모델로 gemma4:12b 사용.
+//  - 먼저 `ollama pull gemma4:12b` 필요
+//  - gemma4:12b는 추론(thinking) 모델이라 chat 호출 시 think:false 로 thinking을 꺼야 함.
+//    (안 끄면 thinking이 num_predict 토큰 예산을 잠식해 content가 비어 JSON 파싱이 실패함)
+//  - 다른 모델을 쓰려면 OLLAMA_MODEL 환경변수로 지정.
+const MODEL = process.env.OLLAMA_MODEL ?? 'gemma4:12b';
 
 // 단일 GPU에서 Ollama는 요청을 직렬 처리하므로 동시성을 높여도 빨라지지 않습니다.
 // (진짜 배치 throughput이 필요하면 vLLM의 continuous batching으로 엔진을 바꾸세요.)
@@ -93,10 +94,11 @@ async function callWithRetry(job: WantedJob, resume: string): Promise<string> {
         model: MODEL,
         messages: [{ role: 'user', content: buildPrompt(job, resume) }],
         format: RESPONSE_SCHEMA as any, // JSON 스키마 강제
+        think: false, // 추론 모델의 thinking 비활성화 — content에 JSON이 직접 오도록(빈 응답 방지)
         stream: false,
         options: {
           temperature: 0,    // 일관된 점수
-          num_predict: 800,  // 출력 잘림(→파싱 실패) 방지
+          num_predict: 2000,  // 출력 잘림(→파싱 실패) 방지. think:false라 전량 content에 쓰임
           repeat_penalty: 1.0, // EXAONE 권장값 (>1.0이면 품질 저하)
         },
       });
