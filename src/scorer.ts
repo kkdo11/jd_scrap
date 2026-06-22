@@ -18,6 +18,11 @@ const MODEL = process.env.OLLAMA_MODEL ?? 'gemma4:12b';
 const CONCURRENCY = Math.max(1, parseInt(process.env.SCORER_CONCURRENCY ?? '1', 10) || 1);
 const MAX_RETRIES = 2;
 
+// 컨텍스트 창. Ollama 기본값(4096)에서는 긴 이력서가 들어오면 프롬프트가 잘려
+// (prompt_eval이 4095에서 멈춤) content가 '{'만 오고 JSON 파싱이 전부 실패한다.
+// 풀 이력서(붙여넣기)도 수용하도록 충분히 키운다. VRAM이 부족하면 OLLAMA_NUM_CTX로 낮출 것.
+const NUM_CTX = Math.max(2048, parseInt(process.env.OLLAMA_NUM_CTX ?? '16384', 10) || 16384);
+
 // Ollama format에 넘길 JSON 스키마 — 출력 구조를 문법으로 강제
 const RESPONSE_SCHEMA = {
   type: 'object',
@@ -98,6 +103,7 @@ async function callWithRetry(job: WantedJob, resume: string): Promise<string> {
         stream: false,
         options: {
           temperature: 0,    // 일관된 점수
+          num_ctx: NUM_CTX,   // 긴 이력서 프롬프트가 잘리지 않도록 컨텍스트 확보
           num_predict: 2000,  // 출력 잘림(→파싱 실패) 방지. think:false라 전량 content에 쓰임
           repeat_penalty: 1.0, // EXAONE 권장값 (>1.0이면 품질 저하)
         },
