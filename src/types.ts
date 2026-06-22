@@ -18,5 +18,5 @@ export interface ScoredJob extends WantedJob {
 export type ProgressEvent =
   | { type: 'status'; message: string }
   | { type: 'scored'; index: number; total: number; job: ScoredJob }
-  | { type: 'done'; count: number }
+  | { type: 'done'; count: number; resumeHash?: string }
   | { type: 'error'; message: string };
