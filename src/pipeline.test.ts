@@ -44,3 +44,29 @@ test('runPipeline: 수집 실패 시 error emit 후 throw', async () => {
   assert.equal(last.type, 'error');
   assert.match((last as any).message, /API 다운/);
 });
+
+test('runPipeline: excludeIds를 fetchJobs로 그대로 전달', async () => {
+  let received: Set<number> | undefined;
+  const fakeDeps: PipelineDeps = {
+    fetchJobs: async (_limit, excludeIds) => {
+      received = excludeIds;
+      return [];
+    },
+    scoreJobs: async () => [],
+  };
+  await runPipeline('이력서', 10, () => {}, fakeDeps, new Set([7, 8]));
+  assert.deepEqual([...(received ?? new Set())].sort((a, b) => a - b), [7, 8]);
+});
+
+test('runPipeline: excludeIds 미전달 시 빈 셋', async () => {
+  let received: Set<number> | undefined;
+  const fakeDeps: PipelineDeps = {
+    fetchJobs: async (_limit, excludeIds) => {
+      received = excludeIds;
+      return [];
+    },
+    scoreJobs: async () => [],
+  };
+  await runPipeline('이력서', 10, () => {}, fakeDeps);
+  assert.equal(received?.size, 0);
+});
