@@ -5,7 +5,8 @@
   "private": true,
   "scripts": {
     "start": "tsx src/index.ts",
-    "start:50": "tsx src/index.ts 50"
+    "start:50": "tsx src/index.ts 50",
+    "test": "tsx --test src/**/*.test.ts"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
