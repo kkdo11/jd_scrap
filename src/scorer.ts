@@ -146,20 +146,25 @@ export async function scoreJob(job: WantedJob, resume: string): Promise<ScoredJo
   }
 }
 
-export async function scoreAllJobs(jobs: WantedJob[], resume: string): Promise<ScoredJob[]> {
+export async function scoreAllJobs(
+  jobs: WantedJob[],
+  resume: string,
+  onScored?: (e: { index: number; total: number; job: ScoredJob }) => void,
+  scoreOne: (job: WantedJob, resume: string) => Promise<ScoredJob> = scoreJob,
+): Promise<ScoredJob[]> {
   const results: ScoredJob[] = [];
+  const total = jobs.length;
+  let done = 0;
 
   for (let i = 0; i < jobs.length; i += CONCURRENCY) {
     const batch = jobs.slice(i, i + CONCURRENCY);
     const batchResults = await Promise.all(
-      batch.map(async (job) => {
-        const result = await scoreJob(job, resume);
-        console.log(
-          `  [${String(result.score).padStart(3)}점] ${result.position} @ ${result.companyName}`
-        );
-        return result;
-      })
+      batch.map((job) => scoreOne(job, resume))
     );
+    for (const result of batchResults) {
+      done++;
+      onScored?.({ index: done, total, job: result });
+    }
     results.push(...batchResults);
   }
 
