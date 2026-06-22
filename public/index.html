@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Wanted Job Matcher</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" />
+  <link rel="stylesheet"
+    href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <span class="brand">wanted<span class="brand-accent">match</span></span>
+    <span class="topbar-sub">내 이력서로 채용 공고 자동 채점</span>
+  </header>
+
+  <main class="container">
+    <section class="panel">
+      <label class="field-label" for="resume">이력서</label>
+      <textarea id="resume" class="resume-input" rows="8"
+        placeholder="이력서 전문을 붙여넣으세요."></textarea>
+
+      <div class="run-row">
+        <label class="field-label inline" for="limit">공고 수</label>
+        <input id="limit" class="limit-input" type="number" min="1" max="100" value="50" />
+        <button id="runBtn" class="run-btn">분석 시작</button>
+      </div>
+
+      <div id="statusBar" class="status-bar" hidden>
+        <span id="statusText" class="status-text"></span>
+        <div class="progress-track"><div id="progressFill" class="progress-fill"></div></div>
+      </div>
+      <div id="errorBar" class="error-bar" hidden></div>
+    </section>
+
+    <section id="results" class="results"></section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
