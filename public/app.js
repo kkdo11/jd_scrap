@@ -13,7 +13,7 @@ function esc(s) {
 
 function addCard(job) {
   const g = gradeBadge(job.score);
-  const url = `https://www.wanted.co.kr/wd/${job.id}`;
+  const url = `https://www.wanted.co.kr/wd/${encodeURIComponent(job.id)}`;
   const tags = (job.matchPoints || []).map((p) => `<span class="tag">${esc(p)}</span>`).join('');
   const gaps = (job.gaps || []).map((p) => `<span class="tag gap">${esc(p)}</span>`).join('');
   const el = document.createElement('article');
@@ -56,7 +56,8 @@ function setRunning(on) {
 function handleChunk(chunk) {
   const dataLine = chunk.split('\n').find((l) => l.startsWith('data: '));
   if (!dataLine) return;
-  const e = JSON.parse(dataLine.slice(6));
+  let e;
+  try { e = JSON.parse(dataLine.slice(6)); } catch { return; }
   if (e.type === 'status') setStatus(e.message);
   else if (e.type === 'scored') { addCard(e.job); setStatus(`채점 중 ${e.index}/${e.total}`); setProgress(e.index, e.total); }
   else if (e.type === 'done') { sortCards(); setStatus(`완료 — ${e.count}개 공고`); setProgress(1, 1); }

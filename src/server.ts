@@ -16,7 +16,7 @@ export function createApp(deps: ServerDeps = defaultDeps): express.Express {
   app.use(express.json({ limit: '1mb' }));
   app.use(express.static(path.join(process.cwd(), 'public')));
 
-  // GPU 1개 → 동시에 하나만 실행. 모듈 스코프 잠금.
+  // GPU 1개 → 동시에 하나만 실행. createApp 클로저 스코프 잠금 (프로덕션은 단일 인스턴스).
   let running = false;
 
   app.post('/run', async (req, res) => {

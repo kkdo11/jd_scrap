@@ -6,7 +6,7 @@
   "scripts": {
     "start": "tsx src/index.ts",
     "start:50": "tsx src/index.ts 50",
-    "test": "tsx --test src/**/*.test.ts",
+    "test": "tsx --test \"src/**/*.test.ts\"",
     "web": "tsx src/serve.ts"
   },
   "devDependencies": {
