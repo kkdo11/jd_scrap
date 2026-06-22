@@ -32,18 +32,17 @@ export function createApp(deps: ServerDeps = defaultDeps): express.Express {
     }
 
     running = true;
-    const resumeHash = hashResume(body.resume);
-    const excludeIds = getSeen(resumeHash);
-    res.writeHead(200, {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      Connection: 'keep-alive',
-    });
-    // done 이벤트에 resumeHash를 실어 프론트가 이후 /seen 호출에 사용하게 한다.
-    const send = (e: ProgressEvent) =>
-      res.write(formatSSE(e.type === 'done' ? { ...e, resumeHash } : e));
-
     try {
+      const resumeHash = hashResume(body.resume);
+      const excludeIds = getSeen(resumeHash);
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+      });
+      // done 이벤트에 resumeHash를 실어 프론트가 이후 /seen 호출에 사용하게 한다.
+      const send = (e: ProgressEvent) =>
+        res.write(formatSSE(e.type === 'done' ? { ...e, resumeHash } : e));
       await deps.runPipeline(body.resume, clampLimit(body.limit), send, undefined, excludeIds);
     } catch {
       // error 이벤트는 runPipeline이 이미 send 했으므로 여기선 스트림만 닫는다.
