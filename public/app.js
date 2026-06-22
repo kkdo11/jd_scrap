@@ -1,4 +1,5 @@
 const $ = (id) => document.getElementById(id);
+let resumeHash = null;
 
 function gradeBadge(score) {
   if (score >= 80) return { label: '강력 추천', color: '#065f46', bg: '#d1fae5' };
@@ -19,6 +20,7 @@ function addCard(job) {
   const el = document.createElement('article');
   el.className = 'card';
   el.dataset.score = job.score;
+  el.dataset.id = job.id;
   el.innerHTML = `
     <div class="card-head">
       <span class="badge" style="background:${g.bg};color:${g.color}">${g.label}</span>
@@ -28,7 +30,11 @@ function addCard(job) {
     <p class="card-company">${esc(job.companyName)}</p>
     <p class="card-summary">${esc(job.summary)}</p>
     <div class="card-foot"><span class="score-pill">${job.score}점</span>
-      <div class="card-tags">${tags}${gaps}</div></div>`;
+      <div class="card-tags">${tags}${gaps}</div>
+      <label class="seen-toggle"><input type="checkbox" class="seen-box" /> 확인함</label>
+    </div>`;
+  el.querySelector('.seen-box').addEventListener('change', (ev) =>
+    onSeenToggle(job.id, el, ev.target.checked));
   $('results').appendChild(el);
 }
 
@@ -53,6 +59,35 @@ function setRunning(on) {
   $('runBtn').textContent = on ? '분석 중...' : '분석 시작';
 }
 
+async function onSeenToggle(jobId, cardEl, checked) {
+  cardEl.classList.toggle('seen', checked);
+  if (!resumeHash) return;
+  try {
+    await fetch('/seen', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resumeHash, jobId, seen: checked }),
+    });
+  } catch (err) {
+    showError('확인함 저장 실패: ' + String(err?.message ?? err));
+  }
+}
+
+async function resetSeen() {
+  if (!resumeHash) return;
+  try {
+    await fetch('/seen/reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resumeHash }),
+    });
+    document.querySelectorAll('.card.seen').forEach((c) => c.classList.remove('seen'));
+    document.querySelectorAll('.seen-box').forEach((b) => (b.checked = false));
+  } catch (err) {
+    showError('초기화 실패: ' + String(err?.message ?? err));
+  }
+}
+
 function handleChunk(chunk) {
   const dataLine = chunk.split('\n').find((l) => l.startsWith('data: '));
   if (!dataLine) return;
@@ -60,7 +95,7 @@ function handleChunk(chunk) {
   try { e = JSON.parse(dataLine.slice(6)); } catch { return; }
   if (e.type === 'status') setStatus(e.message);
   else if (e.type === 'scored') { addCard(e.job); setStatus(`채점 중 ${e.index}/${e.total}`); setProgress(e.index, e.total); }
-  else if (e.type === 'done') { sortCards(); setStatus(`완료 — ${e.count}개 공고`); setProgress(1, 1); }
+  else if (e.type === 'done') { resumeHash = e.resumeHash ?? null; sortCards(); setStatus(`완료 — ${e.count}개 공고`); setProgress(1, 1); $('resultsBar').hidden = false; }
   else if (e.type === 'error') showError(e.message);
 }
 
@@ -70,6 +105,7 @@ async function run() {
 
   $('errorBar').hidden = true;
   $('results').innerHTML = '';
+  $('resultsBar').hidden = true;
   $('statusBar').hidden = false;
   setProgress(0, 1);
   setRunning(true);
@@ -104,3 +140,4 @@ async function run() {
 }
 
 $('runBtn').addEventListener('click', run);
+$('resetSeenBtn').addEventListener('click', resetSeen);

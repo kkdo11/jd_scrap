@@ -97,3 +97,9 @@ body {
   .run-row { flex-wrap: wrap; }
   .run-btn { margin-left: 0; width: 100%; }
 }
+
+.card.seen { opacity: .45; }
+.seen-toggle { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; font-size: 13px; color: #6b7280; cursor: pointer; }
+.results-bar { display: flex; justify-content: flex-end; margin: 0 0 12px; }
+.reset-btn { padding: 6px 12px; border: 1px solid #d1d5db; border-radius: 8px; background: #fff; color: #374151; font-size: 13px; cursor: pointer; }
+.reset-btn:hover { background: #f9fafb; }
