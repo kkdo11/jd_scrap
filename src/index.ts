@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { fetchJobsWithDetails } from './wanted';
-import { scoreAllJobs } from './scorer';
+import { runPipeline } from './pipeline';
+import { clampLimit } from './validation';
 import { generateReport } from './reporter';
 
 async function main(): Promise<void> {
@@ -25,17 +25,21 @@ async function main(): Promise<void> {
   const resume = fs.readFileSync(resumePath, 'utf-8').trim();
   console.log(`✅ 이력서 로드 완료 (${resume.length.toLocaleString()}자)\n`);
 
-  // 3. 공고 수집 (기본 50개, CLI 인자로 조정 가능)
-  const parsedLimit = parseInt(process.argv[2] ?? '50', 10);
-  const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : 50;
-  if (parsedLimit !== limit) {
-    console.warn(`⚠️  잘못된 limit 인자 무시 → 기본값 ${limit} 사용\n`);
-  }
-  const jobs = await fetchJobsWithDetails(limit);
+  // 3. limit 결정 (CLI 인자)
+  const limit = clampLimit(process.argv[2] ?? 50);
 
-  // 4. Claude 점수 산정
-  console.log(`🤖 ${jobs.length}개 공고 AI 분석 시작...\n`);
-  const scored = await scoreAllJobs(jobs, resume);
+  // 4. 수집 + 채점 (진행 상황을 콘솔로 출력)
+  const scored = await runPipeline(resume, limit, (e) => {
+    if (e.type === 'status') {
+      console.log(e.message);
+    } else if (e.type === 'scored') {
+      console.log(
+        `  [${String(e.job.score).padStart(3)}점] ${e.job.position} @ ${e.job.companyName}`
+      );
+    } else if (e.type === 'error') {
+      console.error('⚠️ ', e.message);
+    }
+  });
 
   // 5. 리포트 생성
   const outPath = path.join(process.cwd(), 'report.html');
