@@ -93,3 +93,16 @@ test('runPipeline: searchSpec 미전달 시 DEFAULT_SEARCH', async () => {
   await runPipeline('이력서', 10, () => {}, fakeDeps);
   assert.deepEqual(received, DEFAULT_SEARCH);
 });
+
+test('runPipeline: signal을 fetchJobs와 scoreJobs로 전달', async () => {
+  const ac = new AbortController();
+  let fSignal: AbortSignal | undefined;
+  let sSignal: AbortSignal | undefined;
+  const fakeDeps: PipelineDeps = {
+    fetchJobs: async (_l, _e, _s, signal) => { fSignal = signal; return [{ id: 1 } as WantedJob]; },
+    scoreJobs: async (_j, _r, _o, signal) => { sSignal = signal; return []; },
+  };
+  await runPipeline('이력서', 5, () => {}, fakeDeps, new Set(), DEFAULT_SEARCH, ac.signal);
+  assert.equal(fSignal, ac.signal);
+  assert.equal(sSignal, ac.signal);
+});
