@@ -20,3 +20,8 @@ export type ProgressEvent =
   | { type: 'scored'; index: number; total: number; job: ScoredJob }
   | { type: 'done'; count: number; resumeHash?: string }
   | { type: 'error'; message: string };
+
+export interface SearchSpec {
+  tagIds: number[];
+  keywords: string[];
+}
