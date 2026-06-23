@@ -112,15 +112,21 @@ function isMilitaryAlternative(job: WantedJob): boolean {
   return EXCLUDE_KEYWORDS.some((kw) => text.includes(kw));
 }
 
-export async function fetchJobsWithDetails(limit: number = 40): Promise<WantedJob[]> {
+export async function fetchJobsWithDetails(
+  limit: number = 40,
+  excludeIds: Set<number> = new Set(),
+): Promise<WantedJob[]> {
   console.log('📡 Fetching job list from Wanted...');
   // 병역특례가 필터링된 후에도 limit개 확보하도록 여유분 요청
   const fetchLimit = Math.ceil(limit * 1.3);
   const jobs = await fetchJobList(fetchLimit);
 
   // 제목 기준 1차 필터 (상세 조회 전)
-  const titleFiltered = jobs.filter((j) => !EXCLUDE_KEYWORDS.some((kw) => j.position.includes(kw)));
-  console.log(`✅ Found ${jobs.length} jobs (제목 필터 후 ${titleFiltered.length}개)\n`);
+  const titleFiltered = jobs
+    .filter((j) => !EXCLUDE_KEYWORDS.some((kw) => j.position.includes(kw)))
+    // 사용자가 '확인함' 체크한 공고는 상세 fetch·채점 전에 제외 (토큰 절약). 부족분 백필 안 함.
+    .filter((j) => !excludeIds.has(j.id));
+  console.log(`✅ Found ${jobs.length} jobs (제목·확인함 필터 후 ${titleFiltered.length}개)\n`);
 
   const cache = loadCache();
   const results: WantedJob[] = [];
