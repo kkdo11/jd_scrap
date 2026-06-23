@@ -2,6 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { runPipeline, PipelineDeps } from './pipeline';
 import { ProgressEvent, WantedJob, ScoredJob } from './types';
+import { DEFAULT_SEARCH } from './jobTags';
+import { SearchSpec } from './types';
 
 function scored(id: number, score: number): ScoredJob {
   return {
@@ -69,4 +71,25 @@ test('runPipeline: excludeIds 미전달 시 빈 셋', async () => {
   };
   await runPipeline('이력서', 10, () => {}, fakeDeps);
   assert.equal(received?.size, 0);
+});
+
+test('runPipeline: searchSpec을 fetchJobs로 전달', async () => {
+  let received: SearchSpec | undefined;
+  const fakeDeps: PipelineDeps = {
+    fetchJobs: async (_l, _e, search) => { received = search; return []; },
+    scoreJobs: async () => [],
+  };
+  const spec: SearchSpec = { tagIds: [872], keywords: ['자바'] };
+  await runPipeline('이력서', 10, () => {}, fakeDeps, new Set(), spec);
+  assert.deepEqual(received, spec);
+});
+
+test('runPipeline: searchSpec 미전달 시 DEFAULT_SEARCH', async () => {
+  let received: SearchSpec | undefined;
+  const fakeDeps: PipelineDeps = {
+    fetchJobs: async (_l, _e, search) => { received = search; return []; },
+    scoreJobs: async () => [],
+  };
+  await runPipeline('이력서', 10, () => {}, fakeDeps);
+  assert.deepEqual(received, DEFAULT_SEARCH);
 });
