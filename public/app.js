@@ -1,6 +1,42 @@
 const $ = (id) => document.getElementById(id);
 let resumeHash = null;
 const selectedTags = new Set();
+let runStartedAt = 0;
+
+const LS = { resume: 'wm.resume', query: 'wm.query', tags: 'wm.tagIds', limit: 'wm.limit' };
+
+function savePrefs() {
+  try {
+    localStorage.setItem(LS.query, $('queryText').value);
+    localStorage.setItem(LS.tags, JSON.stringify([...selectedTags]));
+    localStorage.setItem(LS.limit, $('limit').value);
+  } catch { /* localStorage 불가 환경 무시 */ }
+}
+function restorePrefs() {
+  try {
+    const r = localStorage.getItem(LS.resume); if (r) $('resume').value = r;
+    const q = localStorage.getItem(LS.query); if (q) $('queryText').value = q;
+    const l = localStorage.getItem(LS.limit); if (l) $('limit').value = l;
+  } catch { /* 무시 */ }
+}
+function restoreSelectedTags() {
+  // 칩 렌더 후 호출: 저장된 tagIds로 selectedTags·.selected 복원
+  let saved = [];
+  try { saved = JSON.parse(localStorage.getItem(LS.tags) || '[]'); } catch { saved = []; }
+  if (!Array.isArray(saved)) return;
+  for (const id of saved) {
+    selectedTags.add(id);
+    const chip = $('tagChips').querySelector(`.chip[data-id="${id}"]`);
+    if (chip) chip.classList.add('selected');
+  }
+}
+
+const EST_SEC_PER_JOB = 15; // 대략치(gemma 12b). ETA는 실행 중 경과시간으로 자동 보정.
+function updateLimitHint() {
+  const n = Number($('limit').value) || 0;
+  const mins = Math.max(1, Math.ceil((n * EST_SEC_PER_JOB) / 60));
+  $('limitHint').textContent = n > 0 ? `약 ${mins}분 예상` : '';
+}
 
 async function loadTags() {
   try {
@@ -19,11 +55,23 @@ async function loadTags() {
       });
       root.appendChild(el);
     }
+    restoreSelectedTags();
   } catch (err) {
     showError('직군 목록 로딩 실패: ' + String(err?.message ?? err));
   }
 }
 loadTags();
+
+let resumeSaveTimer;
+$('resume').addEventListener('input', () => {
+  clearTimeout(resumeSaveTimer);
+  resumeSaveTimer = setTimeout(() => {
+    try { localStorage.setItem(LS.resume, $('resume').value); } catch {}
+  }, 400);
+});
+$('limit').addEventListener('input', updateLimitHint);
+restorePrefs();
+updateLimitHint();
 
 function gradeBadge(score) {
   if (score >= 80) return { label: '강력 추천', color: '#065f46', bg: '#d1fae5' };
@@ -118,7 +166,13 @@ function handleChunk(chunk) {
   let e;
   try { e = JSON.parse(dataLine.slice(6)); } catch { return; }
   if (e.type === 'status') setStatus(e.message);
-  else if (e.type === 'scored') { addCard(e.job); setStatus(`채점 중 ${e.index}/${e.total}`); setProgress(e.index, e.total); }
+  else if (e.type === 'scored') {
+    addCard(e.job);
+    setProgress(e.index, e.total);
+    const elapsed = (Date.now() - runStartedAt) / 1000;
+    const remain = e.index > 0 ? Math.ceil((elapsed / e.index) * (e.total - e.index) / 60) : 0;
+    setStatus(remain > 0 ? `채점 중 ${e.index}/${e.total} · 약 ${remain}분 남음` : `채점 중 ${e.index}/${e.total}`);
+  }
   else if (e.type === 'done') { resumeHash = e.resumeHash ?? null; sortCards(); setStatus(`완료 — ${e.count}개 공고`); setProgress(1, 1); $('resultsBar').hidden = !resumeHash; }
   else if (e.type === 'error') showError(e.message);
 }
@@ -132,12 +186,14 @@ async function run() {
     return;
   }
 
+  savePrefs();
   $('errorBar').hidden = true;
   $('results').innerHTML = '';
   $('resultsBar').hidden = true;
   $('statusBar').hidden = false;
   setProgress(0, 1);
   setRunning(true);
+  runStartedAt = Date.now();
 
   try {
     const res = await fetch('/run', {
