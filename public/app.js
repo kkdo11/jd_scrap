@@ -1,5 +1,29 @@
 const $ = (id) => document.getElementById(id);
 let resumeHash = null;
+const selectedTags = new Set();
+
+async function loadTags() {
+  try {
+    const res = await fetch('/tags');
+    const { tags } = await res.json();
+    const root = $('tagChips');
+    for (const t of tags) {
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'chip';
+      el.textContent = t.label;
+      el.dataset.id = t.id;
+      el.addEventListener('click', () => {
+        if (selectedTags.has(t.id)) { selectedTags.delete(t.id); el.classList.remove('selected'); }
+        else { selectedTags.add(t.id); el.classList.add('selected'); }
+      });
+      root.appendChild(el);
+    }
+  } catch (err) {
+    showError('직군 목록 로딩 실패: ' + String(err?.message ?? err));
+  }
+}
+loadTags();
 
 function gradeBadge(score) {
   if (score >= 80) return { label: '강력 추천', color: '#065f46', bg: '#d1fae5' };
@@ -102,6 +126,11 @@ function handleChunk(chunk) {
 async function run() {
   const resume = $('resume').value.trim();
   if (!resume) { showError('이력서를 입력하세요.'); return; }
+  const queryText = $('queryText').value.trim();
+  if (!queryText && selectedTags.size === 0) {
+    showError('검색어를 입력하거나 직군을 하나 이상 선택하세요.');
+    return;
+  }
 
   $('errorBar').hidden = true;
   $('results').innerHTML = '';
@@ -114,7 +143,7 @@ async function run() {
     const res = await fetch('/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ resume, limit: Number($('limit').value) }),
+      body: JSON.stringify({ resume, limit: Number($('limit').value), queryText, tagIds: [...selectedTags] }),
     });
     if (res.status === 409) { showError('이미 실행 중입니다. 잠시 후 다시 시도하세요.'); return; }
     if (res.status === 400) { showError((await res.json()).error); return; }
