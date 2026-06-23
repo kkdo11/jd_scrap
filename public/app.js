@@ -58,7 +58,9 @@ async function loadTags() {
     }
     restoreSelectedTags();
   } catch (err) {
-    showError('직군 목록 로딩 실패: ' + String(err?.message ?? err));
+    const root = $('tagChips');
+    root.innerHTML = '<span class="chips-error">직군 목록을 불러오지 못했습니다. <button type="button" id="retryTags" class="link-btn">재시도</button></span>';
+    root.querySelector('#retryTags').addEventListener('click', () => { root.innerHTML = ''; loadTags(); });
   }
 }
 loadTags();
@@ -132,6 +134,20 @@ function setRunning(on) {
   $('runBtn').textContent = on ? '분석 중...' : '분석 시작';
   $('cancelBtn').hidden = !on;
 }
+function friendlyError(err) {
+  const msg = String(err?.message ?? err);
+  if (/Unexpected token|<!DOCTYPE|is not valid JSON/i.test(msg))
+    return '서버 응답이 올바르지 않습니다. 서버를 재시작했는지 확인하세요(옛 서버가 떠 있을 수 있습니다).';
+  if (/Failed to fetch|NetworkError|ECONNREFUSED/i.test(msg))
+    return '서버에 연결할 수 없습니다. 서버가 실행 중인지 확인하세요.';
+  return msg;
+}
+function showEmpty(html) {
+  const el = $('emptyState');
+  el.innerHTML = html;
+  el.hidden = false;
+}
+function hideEmpty() { $('emptyState').hidden = true; }
 
 async function onSeenToggle(jobId, cardEl, checked) {
   cardEl.classList.toggle('seen', checked);
@@ -175,7 +191,18 @@ function handleChunk(chunk) {
     const remain = e.index > 0 ? Math.ceil((elapsed / e.index) * (e.total - e.index) / 60) : 0;
     setStatus(remain > 0 ? `채점 중 ${e.index}/${e.total} · 약 ${remain}분 남음` : `채점 중 ${e.index}/${e.total}`);
   }
-  else if (e.type === 'done') { resumeHash = e.resumeHash ?? null; sortCards(); setStatus(`완료 — ${e.count}개 공고`); setProgress(1, 1); $('resultsBar').hidden = !resumeHash; }
+  else if (e.type === 'done') {
+    resumeHash = e.resumeHash ?? null;
+    sortCards();
+    setProgress(1, 1);
+    $('resultsBar').hidden = !resumeHash;
+    if (e.count === 0) {
+      setStatus('완료 — 0개');
+      showEmpty('조건에 맞는 신입 공고를 찾지 못했어요.<br>· 키워드를 줄이거나 빼보세요<br>· 다른 직군 칩을 선택해보세요<br>· 공고 수를 늘려보세요');
+    } else {
+      setStatus(`완료 — ${e.count}개 공고`);
+    }
+  }
   else if (e.type === 'error') showError(e.message);
 }
 
@@ -191,6 +218,7 @@ async function run() {
   savePrefs();
   $('errorBar').hidden = true;
   $('results').innerHTML = '';
+  hideEmpty();
   $('resultsBar').hidden = true;
   $('statusBar').hidden = false;
   setProgress(0, 1);
@@ -223,7 +251,7 @@ async function run() {
     }
   } catch (err) {
     if (err?.name === 'AbortError') setStatus('중단됨');
-    else showError(String(err?.message ?? err));
+    else showError(friendlyError(err));
   } finally {
     setRunning(false);
     runController = null;
