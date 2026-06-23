@@ -44,6 +44,10 @@ export function createApp(deps: ServerDeps = defaultDeps): express.Express {
     }
 
     running = true;
+    const ac = new AbortController();
+    let finished = false;
+    // 클라이언트가 스트림을 끊으면(정상 완료 아님) 진행 중 작업을 중단해 잠금을 즉시 해제.
+    req.on('close', () => { if (!finished) ac.abort(); });
     try {
       // 자유텍스트가 있으면 LLM 파싱, 칩 태그와 병합. 칩만 있으면 LLM 생략.
       let search: SearchSpec = { tagIds, keywords: [] };
@@ -69,12 +73,13 @@ export function createApp(deps: ServerDeps = defaultDeps): express.Express {
       // done 이벤트에 resumeHash를 실어 프론트가 이후 /seen 호출에 사용하게 한다.
       const send = (e: ProgressEvent) =>
         res.write(formatSSE(e.type === 'done' ? { ...e, resumeHash } : e));
-      await deps.runPipeline(body.resume, clampLimit(body.limit), send, undefined, excludeIds, search);
+      await deps.runPipeline(body.resume, clampLimit(body.limit), send, undefined, excludeIds, search, ac.signal);
     } catch {
       // 스트림 시작 전(헤더 미전송) 예외면 빈 200 대신 500을 내려 프론트 멈춤을 막는다.
       // 스트림 시작 후 예외는 runPipeline이 이미 error 이벤트를 send 했으므로 스트림만 닫는다.
       if (!res.headersSent) res.status(500).json({ error: '실행 준비 실패' });
     } finally {
+      finished = true;
       running = false;
       if (!res.writableEnded) res.end();
     }

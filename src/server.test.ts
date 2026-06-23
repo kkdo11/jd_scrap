@@ -245,6 +245,44 @@ test('POST /seen: 잘못된 입력 400', async () => {
   }
 });
 
+test('POST /run: 스트림 중 클라이언트 연결 종료 → 잠금 해제(다음 요청 200)', async () => {
+  withTempStore();
+  // signal abort 시 반환하는 fakeRun (실제 중단 동작 모사)
+  const fakeRun = (async (_r: string, _l: number, onProgress: any, _d: any, _e: any, _s: any, signal: AbortSignal) => {
+    onProgress({ type: 'status', message: 'start' });
+    await new Promise<void>((resolve) => {
+      if (signal?.aborted) return resolve();
+      signal?.addEventListener('abort', () => resolve());
+    });
+    return [];
+  }) as any;
+  const fakeParse = (async () => ({ tagIds: [], keywords: [] })) as any;
+  const { url, close } = await listen({ runPipeline: fakeRun, parseQuery: fakeParse });
+  try {
+    // 요청1: 스트림 시작 후 클라이언트가 중단
+    const ac = new AbortController();
+    const p1 = fetch(`${url}/run`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resume: '이력서', limit: 5, tagIds: [872] }),
+      signal: ac.signal,
+    });
+    await new Promise((r) => setTimeout(r, 50)); // 핸들러가 잠금 잡을 시간
+    ac.abort();
+    await p1.catch(() => {}); // abort로 reject되는 것 무시
+
+    // 요청2: 잠금이 풀렸으면 200
+    await new Promise((r) => setTimeout(r, 50));
+    const req2 = await fetch(`${url}/run`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resume: '이력서', limit: 5, tagIds: [872] }),
+    });
+    assert.equal(req2.status, 200);
+    await req2.text();
+  } finally {
+    await close();
+  }
+});
+
 test('POST /seen/reset: 네임스페이스 비움', async () => {
   const p = withTempStore();
   const h = hashResume('내 이력서');

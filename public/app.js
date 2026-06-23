@@ -1,6 +1,43 @@
 const $ = (id) => document.getElementById(id);
 let resumeHash = null;
 const selectedTags = new Set();
+let runStartedAt = 0;
+let runController = null;
+
+const LS = { resume: 'wm.resume', query: 'wm.query', tags: 'wm.tagIds', limit: 'wm.limit' };
+
+function savePrefs() {
+  try {
+    localStorage.setItem(LS.query, $('queryText').value);
+    localStorage.setItem(LS.tags, JSON.stringify([...selectedTags]));
+    localStorage.setItem(LS.limit, $('limit').value);
+  } catch { /* localStorage 불가 환경 무시 */ }
+}
+function restorePrefs() {
+  try {
+    const r = localStorage.getItem(LS.resume); if (r) $('resume').value = r;
+    const q = localStorage.getItem(LS.query); if (q) $('queryText').value = q;
+    const l = localStorage.getItem(LS.limit); if (l) $('limit').value = l;
+  } catch { /* 무시 */ }
+}
+function restoreSelectedTags() {
+  // 칩 렌더 후 호출: 저장된 tagIds로 selectedTags·.selected 복원
+  let saved = [];
+  try { saved = JSON.parse(localStorage.getItem(LS.tags) || '[]'); } catch { saved = []; }
+  if (!Array.isArray(saved)) return;
+  for (const id of saved) {
+    selectedTags.add(id);
+    const chip = $('tagChips').querySelector(`.chip[data-id="${id}"]`);
+    if (chip) chip.classList.add('selected');
+  }
+}
+
+const EST_SEC_PER_JOB = 15; // 대략치(gemma 12b). ETA는 실행 중 경과시간으로 자동 보정.
+function updateLimitHint() {
+  const n = Number($('limit').value) || 0;
+  const mins = Math.max(1, Math.ceil((n * EST_SEC_PER_JOB) / 60));
+  $('limitHint').textContent = n > 0 ? `약 ${mins}분 예상` : '';
+}
 
 async function loadTags() {
   try {
@@ -19,11 +56,25 @@ async function loadTags() {
       });
       root.appendChild(el);
     }
+    restoreSelectedTags();
   } catch (err) {
-    showError('직군 목록 로딩 실패: ' + String(err?.message ?? err));
+    const root = $('tagChips');
+    root.innerHTML = '<span class="chips-error">직군 목록을 불러오지 못했습니다. <button type="button" id="retryTags" class="link-btn">재시도</button></span>';
+    root.querySelector('#retryTags').addEventListener('click', () => { root.innerHTML = ''; loadTags(); });
   }
 }
 loadTags();
+
+let resumeSaveTimer;
+$('resume').addEventListener('input', () => {
+  clearTimeout(resumeSaveTimer);
+  resumeSaveTimer = setTimeout(() => {
+    try { localStorage.setItem(LS.resume, $('resume').value); } catch {}
+  }, 400);
+});
+$('limit').addEventListener('input', updateLimitHint);
+restorePrefs();
+updateLimitHint();
 
 function gradeBadge(score) {
   if (score >= 80) return { label: '강력 추천', color: '#065f46', bg: '#d1fae5' };
@@ -81,7 +132,22 @@ function showError(msg) {
 function setRunning(on) {
   $('runBtn').disabled = on;
   $('runBtn').textContent = on ? '분석 중...' : '분석 시작';
+  $('cancelBtn').hidden = !on;
 }
+function friendlyError(err) {
+  const msg = String(err?.message ?? err);
+  if (/Unexpected token|<!DOCTYPE|is not valid JSON/i.test(msg))
+    return '서버 응답이 올바르지 않습니다. 서버를 재시작했는지 확인하세요(옛 서버가 떠 있을 수 있습니다).';
+  if (/Failed to fetch|NetworkError|ECONNREFUSED/i.test(msg))
+    return '서버에 연결할 수 없습니다. 서버가 실행 중인지 확인하세요.';
+  return msg;
+}
+function showEmpty(html) {
+  const el = $('emptyState');
+  el.innerHTML = html;
+  el.hidden = false;
+}
+function hideEmpty() { $('emptyState').hidden = true; }
 
 async function onSeenToggle(jobId, cardEl, checked) {
   cardEl.classList.toggle('seen', checked);
@@ -118,8 +184,25 @@ function handleChunk(chunk) {
   let e;
   try { e = JSON.parse(dataLine.slice(6)); } catch { return; }
   if (e.type === 'status') setStatus(e.message);
-  else if (e.type === 'scored') { addCard(e.job); setStatus(`채점 중 ${e.index}/${e.total}`); setProgress(e.index, e.total); }
-  else if (e.type === 'done') { resumeHash = e.resumeHash ?? null; sortCards(); setStatus(`완료 — ${e.count}개 공고`); setProgress(1, 1); $('resultsBar').hidden = !resumeHash; }
+  else if (e.type === 'scored') {
+    addCard(e.job);
+    setProgress(e.index, e.total);
+    const elapsed = (Date.now() - runStartedAt) / 1000;
+    const remain = e.index > 0 ? Math.ceil((elapsed / e.index) * (e.total - e.index) / 60) : 0;
+    setStatus(remain > 0 ? `채점 중 ${e.index}/${e.total} · 약 ${remain}분 남음` : `채점 중 ${e.index}/${e.total}`);
+  }
+  else if (e.type === 'done') {
+    resumeHash = e.resumeHash ?? null;
+    sortCards();
+    setProgress(1, 1);
+    $('resultsBar').hidden = !resumeHash;
+    if (e.count === 0) {
+      setStatus('완료 — 0개');
+      showEmpty('조건에 맞는 신입 공고를 찾지 못했어요.<br>· 키워드를 줄이거나 빼보세요<br>· 다른 직군 칩을 선택해보세요<br>· 공고 수를 늘려보세요');
+    } else {
+      setStatus(`완료 — ${e.count}개 공고`);
+    }
+  }
   else if (e.type === 'error') showError(e.message);
 }
 
@@ -132,18 +215,23 @@ async function run() {
     return;
   }
 
+  savePrefs();
   $('errorBar').hidden = true;
   $('results').innerHTML = '';
+  hideEmpty();
   $('resultsBar').hidden = true;
   $('statusBar').hidden = false;
   setProgress(0, 1);
   setRunning(true);
+  runStartedAt = Date.now();
+  runController = new AbortController();
 
   try {
     const res = await fetch('/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ resume, limit: Number($('limit').value), queryText, tagIds: [...selectedTags] }),
+      signal: runController.signal,
     });
     if (res.status === 409) { showError('이미 실행 중입니다. 잠시 후 다시 시도하세요.'); return; }
     if (res.status === 400) { showError((await res.json()).error); return; }
@@ -162,11 +250,14 @@ async function run() {
       }
     }
   } catch (err) {
-    showError(String(err?.message ?? err));
+    if (err?.name === 'AbortError') setStatus('중단됨');
+    else showError(friendlyError(err));
   } finally {
     setRunning(false);
+    runController = null;
   }
 }
 
 $('runBtn').addEventListener('click', run);
 $('resetSeenBtn').addEventListener('click', resetSeen);
+$('cancelBtn').addEventListener('click', () => { if (runController) runController.abort(); });

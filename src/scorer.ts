@@ -143,12 +143,14 @@ export async function scoreAllJobs(
   resume: string,
   onScored?: (e: { index: number; total: number; job: ScoredJob }) => void,
   scoreOne: (job: WantedJob, resume: string) => Promise<ScoredJob> = scoreJob,
+  signal?: AbortSignal,
 ): Promise<ScoredJob[]> {
   const results: ScoredJob[] = [];
   const total = jobs.length;
   let done = 0;
 
   for (let i = 0; i < jobs.length; i += CONCURRENCY) {
+    if (signal?.aborted) break;
     const batch = jobs.slice(i, i + CONCURRENCY);
     const batchResults = await Promise.all(
       batch.map((job) => scoreOne(job, resume))
