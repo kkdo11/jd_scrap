@@ -1,16 +1,19 @@
 import express from 'express';
 import * as path from 'path';
 import { runPipeline } from './pipeline';
-import { clampLimit, isValidResume } from './validation';
+import { parseQuery } from './queryParser';
+import { clampLimit, isValidResume, isValidSearch, sanitizeTagIds } from './validation';
+import { tagOptions } from './jobTags';
 import { formatSSE } from './sse';
-import { ProgressEvent } from './types';
+import { ProgressEvent, SearchSpec } from './types';
 import { hashResume, getSeen, toggleSeen, resetSeen } from './seenStore';
 
 export interface ServerDeps {
   runPipeline: typeof runPipeline;
+  parseQuery: typeof parseQuery;
 }
 
-const defaultDeps: ServerDeps = { runPipeline };
+const defaultDeps: ServerDeps = { runPipeline, parseQuery };
 
 export function createApp(deps: ServerDeps = defaultDeps): express.Express {
   const app = express();
@@ -20,10 +23,19 @@ export function createApp(deps: ServerDeps = defaultDeps): express.Express {
   // GPU 1개 → 동시에 하나만 실행. createApp 클로저 스코프 잠금 (프로덕션은 단일 인스턴스).
   let running = false;
 
+  app.get('/tags', (_req, res) => {
+    res.json({ tags: tagOptions() });
+  });
+
   app.post('/run', async (req, res) => {
     const body = req.body ?? {};
     if (!isValidResume(body.resume)) {
       res.status(400).json({ error: '이력서를 입력하세요.' });
+      return;
+    }
+    const tagIds = sanitizeTagIds(body.tagIds);
+    if (!isValidSearch(body.queryText, tagIds)) {
+      res.status(400).json({ error: '검색어를 입력하거나 직군을 선택하세요.' });
       return;
     }
     if (running) {
@@ -33,6 +45,20 @@ export function createApp(deps: ServerDeps = defaultDeps): express.Express {
 
     running = true;
     try {
+      // 자유텍스트가 있으면 LLM 파싱, 칩 태그와 병합. 칩만 있으면 LLM 생략.
+      let search: SearchSpec = { tagIds, keywords: [] };
+      if (typeof body.queryText === 'string' && body.queryText.trim()) {
+        const parsed = await deps.parseQuery(body.queryText);
+        search = {
+          tagIds: [...new Set([...tagIds, ...parsed.tagIds])],
+          keywords: parsed.keywords,
+        };
+      }
+      // 상황 B: 텍스트는 있었으나 직군을 못 뽑고 칩도 없어 태그 0개 → 차단·안내(헤더 전송 전).
+      if (search.tagIds.length === 0) {
+        res.status(400).json({ error: '직군을 인식하지 못했어요. 직군 칩을 선택하거나 직군명을 포함해 다시 입력하세요.' });
+        return;
+      }
       const resumeHash = hashResume(body.resume);
       const excludeIds = getSeen(resumeHash);
       res.writeHead(200, {
@@ -43,7 +69,7 @@ export function createApp(deps: ServerDeps = defaultDeps): express.Express {
       // done 이벤트에 resumeHash를 실어 프론트가 이후 /seen 호출에 사용하게 한다.
       const send = (e: ProgressEvent) =>
         res.write(formatSSE(e.type === 'done' ? { ...e, resumeHash } : e));
-      await deps.runPipeline(body.resume, clampLimit(body.limit), send, undefined, excludeIds);
+      await deps.runPipeline(body.resume, clampLimit(body.limit), send, undefined, excludeIds, search);
     } catch {
       // 스트림 시작 전(헤더 미전송) 예외면 빈 200 대신 500을 내려 프론트 멈춤을 막는다.
       // 스트림 시작 후 예외는 runPipeline이 이미 error 이벤트를 send 했으므로 스트림만 닫는다.

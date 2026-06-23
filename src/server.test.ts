@@ -19,7 +19,7 @@ async function listen(deps: ServerDeps): Promise<{ url: string; close: () => Pro
 }
 
 test('POST /run: 이력서 없으면 400', async () => {
-  const { url, close } = await listen({ runPipeline: (async () => []) as any });
+  const { url, close } = await listen({ runPipeline: (async () => []) as any, parseQuery: (async () => ({ tagIds: [], keywords: [] })) as any });
   try {
     const res = await fetch(`${url}/run`, {
       method: 'POST',
@@ -42,13 +42,13 @@ test('POST /run: 실행 중이면 두 번째 요청 409, 끝나면 다시 200', 
     return [];
   }) as any;
 
-  const { url, close } = await listen({ runPipeline: fakeRun });
+  const { url, close } = await listen({ runPipeline: fakeRun, parseQuery: (async () => ({ tagIds: [], keywords: [] })) as any });
   try {
     // 요청1: 시작(헤더 수신되면 fetch resolve, 본문 스트림은 열린 채 유지)
     const req1 = await fetch(`${url}/run`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ resume: '이력서', limit: 5 }),
+      body: JSON.stringify({ resume: '이력서', limit: 5, tagIds: [872] }),
     });
     assert.equal(req1.status, 200);
 
@@ -56,7 +56,7 @@ test('POST /run: 실행 중이면 두 번째 요청 409, 끝나면 다시 200', 
     const req2 = await fetch(`${url}/run`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ resume: '이력서', limit: 5 }),
+      body: JSON.stringify({ resume: '이력서', limit: 5, tagIds: [872] }),
     });
     assert.equal(req2.status, 409);
 
@@ -68,7 +68,7 @@ test('POST /run: 실행 중이면 두 번째 요청 409, 끝나면 다시 200', 
     const req3 = await fetch(`${url}/run`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ resume: '이력서', limit: 5 }),
+      body: JSON.stringify({ resume: '이력서', limit: 5, tagIds: [872] }),
     });
     assert.equal(req3.status, 200);
     await req3.text();
@@ -89,12 +89,12 @@ test('POST /run: done 이벤트에 resumeHash 포함', async () => {
     onProgress({ type: 'done', count: 0 });
     return [];
   }) as any;
-  const { url, close } = await listen({ runPipeline: fakeRun });
+  const { url, close } = await listen({ runPipeline: fakeRun, parseQuery: (async () => ({ tagIds: [], keywords: [] })) as any });
   try {
     const res = await fetch(`${url}/run`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ resume: '내 이력서', limit: 5 }),
+      body: JSON.stringify({ resume: '내 이력서', limit: 5, tagIds: [872] }),
     });
     const text = await res.text();
     const doneLine = text.split('\n').find((l) => l.includes('"type":"done"'))!;
@@ -114,12 +114,12 @@ test('POST /run: 저장된 seen 셋을 excludeIds로 주입', async () => {
     onProgress({ type: 'done', count: 0 });
     return [];
   }) as any;
-  const { url, close } = await listen({ runPipeline: fakeRun });
+  const { url, close } = await listen({ runPipeline: fakeRun, parseQuery: (async () => ({ tagIds: [], keywords: [] })) as any });
   try {
     const res = await fetch(`${url}/run`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ resume: '내 이력서', limit: 5 }),
+      body: JSON.stringify({ resume: '내 이력서', limit: 5, tagIds: [872] }),
     });
     await res.text();
     assert.deepEqual([...(received ?? new Set())], [999]);
@@ -128,10 +128,95 @@ test('POST /run: 저장된 seen 셋을 excludeIds로 주입', async () => {
   }
 });
 
+test('GET /tags: 직군 옵션 반환', async () => {
+  const { url, close } = await listen({ runPipeline: (async () => []) as any, parseQuery: (async () => ({ tagIds: [], keywords: [] })) as any });
+  try {
+    const res = await fetch(`${url}/tags`);
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.ok(Array.isArray(body.tags) && body.tags.length > 0);
+    assert.ok(body.tags.every((t: any) => typeof t.id === 'number' && typeof t.label === 'string'));
+  } finally {
+    await close();
+  }
+});
+
+test('POST /run: 검색 입력(텍스트·칩) 둘 다 없으면 400', async () => {
+  const { url, close } = await listen({ runPipeline: (async () => []) as any, parseQuery: (async () => ({ tagIds: [], keywords: [] })) as any });
+  try {
+    const res = await fetch(`${url}/run`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resume: '이력서', limit: 5 }),
+    });
+    assert.equal(res.status, 400);
+  } finally {
+    await close();
+  }
+});
+
+test('POST /run: queryText는 parseQuery로, 칩 tagIds와 병합해 runPipeline에 전달', async () => {
+  withTempStore();
+  let received: any;
+  const fakeRun = (async (_r: string, _l: number, onProgress: any, _d: any, _e: any, search: any) => {
+    received = search; onProgress({ type: 'done', count: 0 }); return [];
+  }) as any;
+  const fakeParse = (async () => ({ tagIds: [839], keywords: ['자바'] })) as any;
+  const { url, close } = await listen({ runPipeline: fakeRun, parseQuery: fakeParse });
+  try {
+    const res = await fetch(`${url}/run`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resume: '이력서', limit: 5, queryText: 'ai 자바', tagIds: [872] }),
+    });
+    await res.text();
+    assert.deepEqual([...received.tagIds].sort((a: number, b: number) => a - b), [839, 872]);
+    assert.deepEqual(received.keywords, ['자바']);
+  } finally {
+    await close();
+  }
+});
+
+test('POST /run: 텍스트는 있으나 직군 인식 0개·칩 없음이면 400(상황 B)', async () => {
+  withTempStore();
+  const fakeRun = (async () => []) as any;
+  const fakeParse = (async () => ({ tagIds: [], keywords: ['자바'] })) as any; // 직군 못 뽑음
+  const { url, close } = await listen({ runPipeline: fakeRun, parseQuery: fakeParse });
+  try {
+    const res = await fetch(`${url}/run`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resume: '이력서', limit: 5, queryText: '자바 공고' }),
+    });
+    assert.equal(res.status, 400);
+  } finally {
+    await close();
+  }
+});
+
+test('POST /run: 칩만 있으면 parseQuery 호출 없이 그 태그로', async () => {
+  withTempStore();
+  let parseCalled = false;
+  let received: any;
+  const fakeRun = (async (_r: string, _l: number, onProgress: any, _d: any, _e: any, search: any) => {
+    received = search; onProgress({ type: 'done', count: 0 }); return [];
+  }) as any;
+  const fakeParse = (async () => { parseCalled = true; return { tagIds: [], keywords: [] }; }) as any;
+  const { url, close } = await listen({ runPipeline: fakeRun, parseQuery: fakeParse });
+  try {
+    const res = await fetch(`${url}/run`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ resume: '이력서', limit: 5, tagIds: [655] }),
+    });
+    await res.text();
+    assert.equal(parseCalled, false);
+    assert.deepEqual(received.tagIds, [655]);
+  } finally {
+    await close();
+  }
+});
+
 test('POST /seen: 토글이 스토어에 반영', async () => {
   const p = withTempStore();
   const h = hashResume('내 이력서');
-  const { url, close } = await listen({ runPipeline: (async () => []) as any });
+  const { url, close } = await listen({ runPipeline: (async () => []) as any, parseQuery: (async () => ({ tagIds: [], keywords: [] })) as any });
   try {
     const res = await fetch(`${url}/seen`, {
       method: 'POST',
@@ -147,7 +232,7 @@ test('POST /seen: 토글이 스토어에 반영', async () => {
 
 test('POST /seen: 잘못된 입력 400', async () => {
   withTempStore();
-  const { url, close } = await listen({ runPipeline: (async () => []) as any });
+  const { url, close } = await listen({ runPipeline: (async () => []) as any, parseQuery: (async () => ({ tagIds: [], keywords: [] })) as any });
   try {
     const res = await fetch(`${url}/seen`, {
       method: 'POST',
@@ -164,7 +249,7 @@ test('POST /seen/reset: 네임스페이스 비움', async () => {
   const p = withTempStore();
   const h = hashResume('내 이력서');
   toggleSeen(h, 1, true, p);
-  const { url, close } = await listen({ runPipeline: (async () => []) as any });
+  const { url, close } = await listen({ runPipeline: (async () => []) as any, parseQuery: (async () => ({ tagIds: [], keywords: [] })) as any });
   try {
     const res = await fetch(`${url}/seen/reset`, {
       method: 'POST',

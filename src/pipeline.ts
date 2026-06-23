@@ -1,9 +1,10 @@
 import { fetchJobsWithDetails } from './wanted';
 import { scoreAllJobs } from './scorer';
-import { WantedJob, ScoredJob, ProgressEvent } from './types';
+import { WantedJob, ScoredJob, ProgressEvent, SearchSpec } from './types';
+import { DEFAULT_SEARCH } from './jobTags';
 
 export interface PipelineDeps {
-  fetchJobs: (limit: number, excludeIds: Set<number>) => Promise<WantedJob[]>;
+  fetchJobs: (limit: number, excludeIds: Set<number>, search: SearchSpec) => Promise<WantedJob[]>;
   scoreJobs: (
     jobs: WantedJob[],
     resume: string,
@@ -23,10 +24,11 @@ export async function runPipeline(
   onProgress: (e: ProgressEvent) => void,
   deps: PipelineDeps = defaultDeps,
   excludeIds: Set<number> = new Set(),
+  search: SearchSpec = DEFAULT_SEARCH,
 ): Promise<ScoredJob[]> {
   try {
     onProgress({ type: 'status', message: '공고 수집 중...' });
-    const jobs = await deps.fetchJobs(limit, excludeIds);
+    const jobs = await deps.fetchJobs(limit, excludeIds, search);
 
     onProgress({ type: 'status', message: `${jobs.length}개 공고 채점 시작` });
     const result = await deps.scoreJobs(jobs, resume, (e) =>
