@@ -1,5 +1,6 @@
 import ollama, { Ollama } from 'ollama';
 import { WantedJob, ScoredJob } from './types';
+import { parseJsonLenient } from './jsonParse';
 
 // 로컬 Ollama 사용. 다른 호스트면 OLLAMA_HOST 환경변수로 지정.
 const client = process.env.OLLAMA_HOST
@@ -75,21 +76,6 @@ ${job.preferredPoints || '정보 없음'}
 }`;
 }
 
-// format 스키마가 깨진 경우를 대비한 관대한 파서 (코드펜스 제거 + {…} 추출)
-function parseJsonLenient(raw: string): any {
-  let text = raw.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
-  try {
-    return JSON.parse(text);
-  } catch {
-    /* fallthrough */
-  }
-  const start = text.indexOf('{');
-  const end = text.lastIndexOf('}');
-  if (start !== -1 && end !== -1 && end > start) {
-    return JSON.parse(text.slice(start, end + 1));
-  }
-  throw new Error('No JSON object found');
-}
 
 async function callWithRetry(job: WantedJob, resume: string): Promise<string> {
   let lastErr: any;
