@@ -27,7 +27,8 @@ function buildPrompt(text: string): string {
 직군은 반드시 다음 목록 중에서만 고르세요(해당 없으면 roles는 빈 배열):
 ${labels}
 
-키워드는 프로그래밍 언어/프레임워크/도구 등 구체 기술명만(예: 자바, Spring, Kubernetes). 직군명은 키워드에 넣지 마세요.
+키워드는 프로그래밍 언어/프레임워크/도구 등 구체 기술명만. 직군명은 키워드에 넣지 마세요.
+키워드는 공고 본문에서 매칭하므로 반드시 영어 정식 표기로 쓰세요(예: 자바→"Java", 스프링→"Spring", 쿠버네티스→"Kubernetes", 파이썬→"Python").
 
 아래 JSON으로만 응답:
 {"roles": ["..."], "keywords": ["..."]}`;

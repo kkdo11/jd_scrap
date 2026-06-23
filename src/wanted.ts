@@ -55,7 +55,8 @@ export function buildJobListUrl(limit: number, search: SearchSpec): string {
   // ⚠️ 원티드 API는 'tag_type_ids[]'(대괄호)를 무시한다. 대괄호 없이 반복 전달해야 필터 적용.
   // 호출자(서버/CLI)가 tagIds 최소 1개를 보장한다(빈 태그 = 전체 수집 경로는 없음).
   search.tagIds.forEach((id) => params.append('tag_type_ids', String(id)));
-  if (search.keywords.length) params.append('query', search.keywords.join(' '));
+  // 키워드는 query 파라미터로 넘기지 않는다: years=0(신입)과 함께 쓰면 거의 0건으로 무너진다.
+  // (실측: 872 신입 단독 40건, query=Java/spring 추가 시 0~1건) → 키워드는 수집 후 상세 본문에서 필터한다.
   return `${BASE_URL}/jobs?${params.toString()}`;
 }
 
@@ -110,14 +111,26 @@ function isMilitaryAlternative(job: WantedJob): boolean {
   return EXCLUDE_KEYWORDS.some((kw) => text.includes(kw));
 }
 
+// 키워드 필터(수집 후): 상세까지 받은 공고의 제목+본문에서 키워드를 찾는다.
+// 기술명은 주로 자격요건/우대사항 본문에 영어로 등장하므로(제목엔 거의 없음) 상세 기준으로 매칭한다.
+// 키워드가 없으면 모두 통과. 여러 키워드는 OR(하나라도 포함)로 본다(0건 방지).
+export function matchesKeywords(job: WantedJob, keywords: string[]): boolean {
+  if (!keywords.length) return true;
+  const text = [job.position, job.mainTasks, job.requirements, job.preferredPoints]
+    .join(' ')
+    .toLowerCase();
+  return keywords.some((kw) => text.includes(kw.toLowerCase()));
+}
+
 export async function fetchJobsWithDetails(
   limit: number = 40,
   excludeIds: Set<number> = new Set(),
   search: SearchSpec = DEFAULT_SEARCH,
 ): Promise<WantedJob[]> {
   console.log('📡 Fetching job list from Wanted...');
-  // 병역특례 필터 후에도 limit개 확보하도록 여유분 요청
-  const fetchLimit = Math.ceil(limit * 1.3);
+  // 병역특례·키워드 필터 후에도 limit개 확보하도록 여유분 요청.
+  // 키워드가 있으면 상세 본문 매칭으로 많이 탈락하므로 후보 풀을 넉넉히(4배, 신입 풀 자체가 작아 상한은 API가 정함).
+  const fetchLimit = Math.ceil(limit * (search.keywords.length ? 4 : 1.3));
   const jobs = await fetchJobList(fetchLimit, search);
 
   const titleFiltered = jobs
@@ -152,6 +165,10 @@ export async function fetchJobsWithDetails(
     }
     if (isMilitaryAlternative(merged as WantedJob)) {
       excluded++;
+      continue;
+    }
+    // 키워드 필터(상세 본문 기준) — 상세까지 받은 뒤 매칭. 키워드 없으면 전부 통과.
+    if (!matchesKeywords(merged as WantedJob, search.keywords)) {
       continue;
     }
     results.push(merged as WantedJob);
