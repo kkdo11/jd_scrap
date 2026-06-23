@@ -126,7 +126,9 @@ export async function fetchJobsWithDetails(
   limit: number = 40,
   excludeIds: Set<number> = new Set(),
   search: SearchSpec = DEFAULT_SEARCH,
+  signal?: AbortSignal,
 ): Promise<WantedJob[]> {
+  if (signal?.aborted) return [];
   console.log('📡 Fetching job list from Wanted...');
   // 병역특례·키워드 필터 후에도 limit개 확보하도록 여유분 요청.
   // 키워드가 있으면 상세 본문 매칭으로 많이 탈락하므로 후보 풀을 넉넉히(4배, 신입 풀 자체가 작아 상한은 API가 정함).
@@ -144,6 +146,7 @@ export async function fetchJobsWithDetails(
   let excluded = 0;
 
   for (let i = 0; i < titleFiltered.length; i++) {
+    if (signal?.aborted) break;
     if (results.length >= limit) break;
     const job = titleFiltered[i];
     process.stdout.write(

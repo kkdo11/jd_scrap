@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildJobListUrl, matchesKeywords } from './wanted';
+import { buildJobListUrl, matchesKeywords, fetchJobsWithDetails } from './wanted';
 import { WantedJob } from './types';
+import { DEFAULT_SEARCH } from './jobTags';
 
 function job(partial: Partial<WantedJob>): WantedJob {
   return { id: 1, position: '', companyName: '', location: '', mainTasks: '', requirements: '', preferredPoints: '', ...partial };
@@ -31,4 +32,19 @@ test('matchesKeywords: 상세 본문 어디든 한 키워드라도 포함하면 
 
 test('matchesKeywords: 어느 키워드도 없으면 탈락', () => {
   assert.equal(matchesKeywords(job({ position: '프론트엔드', requirements: 'React' }), ['Java', 'Spring']), false);
+});
+
+test('fetchJobsWithDetails: 이미 abort면 fetch 없이 빈 배열', async () => {
+  const orig = globalThis.fetch;
+  let fetched = 0;
+  globalThis.fetch = (async () => { fetched++; throw new Error('should not fetch'); }) as any;
+  try {
+    const ac = new AbortController();
+    ac.abort();
+    const out = await fetchJobsWithDetails(5, new Set(), DEFAULT_SEARCH, ac.signal);
+    assert.deepEqual(out, []);
+    assert.equal(fetched, 0);
+  } finally {
+    globalThis.fetch = orig;
+  }
 });
