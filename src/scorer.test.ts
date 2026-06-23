@@ -36,3 +36,31 @@ test('scoreAllJobs: onScored 없이도 동작(하위호환)', async () => {
   assert.equal(result.length, 1);
   assert.equal(result[0].score, 50);
 });
+
+function wjob(id: number): WantedJob {
+  return { id, position: `p${id}`, companyName: `c${id}`, location: '', mainTasks: '', requirements: '', preferredPoints: '' };
+}
+const fakeScore = async (job: WantedJob): Promise<ScoredJob> => ({ ...job, score: 50, matchPoints: [], gaps: [], summary: '' });
+
+test('scoreAllJobs: 이미 abort된 signal이면 채점 0회', async () => {
+  const ac = new AbortController();
+  ac.abort();
+  let calls = 0;
+  const counting = async (j: WantedJob) => { calls++; return fakeScore(j); };
+  const out = await scoreAllJobs([wjob(1), wjob(2)], '이력서', undefined, counting, ac.signal);
+  assert.equal(calls, 0);
+  assert.equal(out.length, 0);
+});
+
+test('scoreAllJobs: 중간 abort 시 처리된 것만 반환', async () => {
+  const ac = new AbortController();
+  let calls = 0;
+  const abortingAfterFirst = async (j: WantedJob): Promise<ScoredJob> => {
+    calls++;
+    if (calls === 1) ac.abort(); // 첫 공고 처리 중 중단 신호
+    return fakeScore(j);
+  };
+  const out = await scoreAllJobs([wjob(1), wjob(2), wjob(3)], '이력서', undefined, abortingAfterFirst, ac.signal);
+  assert.equal(calls, 1);       // 2번째 배치 진입 전 break
+  assert.equal(out.length, 1);
+});
