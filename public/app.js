@@ -2,6 +2,7 @@ const $ = (id) => document.getElementById(id);
 let resumeHash = null;
 const selectedTags = new Set();
 let runStartedAt = 0;
+let runController = null;
 
 const LS = { resume: 'wm.resume', query: 'wm.query', tags: 'wm.tagIds', limit: 'wm.limit' };
 
@@ -129,6 +130,7 @@ function showError(msg) {
 function setRunning(on) {
   $('runBtn').disabled = on;
   $('runBtn').textContent = on ? '분석 중...' : '분석 시작';
+  $('cancelBtn').hidden = !on;
 }
 
 async function onSeenToggle(jobId, cardEl, checked) {
@@ -194,12 +196,14 @@ async function run() {
   setProgress(0, 1);
   setRunning(true);
   runStartedAt = Date.now();
+  runController = new AbortController();
 
   try {
     const res = await fetch('/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ resume, limit: Number($('limit').value), queryText, tagIds: [...selectedTags] }),
+      signal: runController.signal,
     });
     if (res.status === 409) { showError('이미 실행 중입니다. 잠시 후 다시 시도하세요.'); return; }
     if (res.status === 400) { showError((await res.json()).error); return; }
@@ -218,11 +222,14 @@ async function run() {
       }
     }
   } catch (err) {
-    showError(String(err?.message ?? err));
+    if (err?.name === 'AbortError') setStatus('중단됨');
+    else showError(String(err?.message ?? err));
   } finally {
     setRunning(false);
+    runController = null;
   }
 }
 
 $('runBtn').addEventListener('click', run);
 $('resetSeenBtn').addEventListener('click', resetSeen);
+$('cancelBtn').addEventListener('click', () => { if (runController) runController.abort(); });
