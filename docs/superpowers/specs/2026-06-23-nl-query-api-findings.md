@@ -28,17 +28,21 @@
 899 파이썬, 873 웹, 660 자바, 900 C/C++, 1024 데이터사이언티스트, 895 Node.js,
 677 안드로이드, 678 iOS, 676 QA, 1025 빅데이터, 10110 소프트웨어 엔지니어 등.
 
-## 3. `query` 키워드 파라미터 — **서버사이드 동작 확인됨**
+## 3. `query` 키워드 파라미터 — ⚠️ **잘못된 검증, 이후 정정됨**
 
-- `tag_type_ids=872` 단독 → 20건
-- `tag_type_ids=872&query=spring` → 4건, 전부 Kotlin/Spring 백엔드 공고.
+처음엔 `years=-1`(경력무관)로 테스트해 동작한다고 결론냈으나, **이 검증이 틀렸다**:
+- (years=-1) `tag_type_ids=872` → 20건, `+query=spring` → 4건 (동작하는 듯 보임)
+- **(years=0, 실제 앱 설정/신입)** `tag_type_ids=872` 단독 → **40건**,
+  `+query=Java` → **0건**, `+query=spring` → **1건**, `+query=자바` → **0건**.
 
-→ `tag_type_ids`와 `query`는 **동시 사용 가능하며 서버에서 정확히 narrowing** 한다.
-   따라서 키워드는 `query` 파라미터로 서버에 위임한다. **수집 후 클라이언트 키워드 필터(matchesKeywords)는 불필요 — 제거**
-   (과도 필터로 서버가 맞춘 결과를 떨굴 위험 제거, 코드 단순화).
+→ 실제 사용 조건(신입, `years=0`)에서 `query` 파라미터는 거의 항상 0건으로 무너진다.
+   또한 기술명은 제목이 아니라 **상세(자격요건/우대사항) 본문에 영어로** 등장한다.
+   **결론(정정): 키워드는 `query`로 넘기지 않고, 수집한 공고의 상세 본문에서 `matchesKeywords`로
+   post-filter** 한다. gemma는 키워드를 영어 정식 표기로 출력. (커밋 dd2168f, 사용자 브라우저 테스트로 발견)
 
-## 플랜에 반영할 변경
+## 플랜에 반영된 변경
 
 1. `jobTags.ts` 사전: AI/ML=1634, DevOps=674로 정정. `DEFAULT_TAG_IDS=[872,1634,674,655]`. 프론트엔드=669 포함.
-2. `wanted.ts`: `matchesKeywords` 및 수집 후 키워드 필터 단계 **삭제**. 키워드는 `query`로만. fetchLimit 배수는 1.3 유지(키워드 2× 불필요).
-3. Task 5 테스트에서 matchesKeywords 케이스 제거(buildJobListUrl 3케이스만).
+2. `wanted.ts`: 키워드는 **상세 본문 post-filter(`matchesKeywords`)**. `query` 파라미터 미사용.
+   키워드 있을 때 후보 풀 4배(`limit*4`)로 확보(매칭 탈락분 보전).
+3. `queryParser.ts`: gemma가 키워드를 영어 정식 기술명으로 출력하도록 프롬프트 보정.
