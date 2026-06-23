@@ -95,7 +95,7 @@ function handleChunk(chunk) {
   try { e = JSON.parse(dataLine.slice(6)); } catch { return; }
   if (e.type === 'status') setStatus(e.message);
   else if (e.type === 'scored') { addCard(e.job); setStatus(`채점 중 ${e.index}/${e.total}`); setProgress(e.index, e.total); }
-  else if (e.type === 'done') { resumeHash = e.resumeHash ?? null; sortCards(); setStatus(`완료 — ${e.count}개 공고`); setProgress(1, 1); $('resultsBar').hidden = false; }
+  else if (e.type === 'done') { resumeHash = e.resumeHash ?? null; sortCards(); setStatus(`완료 — ${e.count}개 공고`); setProgress(1, 1); $('resultsBar').hidden = !resumeHash; }
   else if (e.type === 'error') showError(e.message);
 }
 
