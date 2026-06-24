@@ -111,15 +111,51 @@ function isMilitaryAlternative(job: WantedJob): boolean {
   return EXCLUDE_KEYWORDS.some((kw) => text.includes(kw));
 }
 
-// 키워드 필터(수집 후): 상세까지 받은 공고의 제목+본문에서 키워드를 찾는다.
-// 기술명은 주로 자격요건/우대사항 본문에 영어로 등장하므로(제목엔 거의 없음) 상세 기준으로 매칭한다.
+// 기술 키워드 별칭: parseQuery는 키워드를 영어 정식 표기로만 뱉지만(Java, Spring, Python…)
+// 공고 본문은 한글로 쓰인 경우가 많아(백엔드, 파이썬, 쿠버네티스) 영어 단독 매칭은 false negative가 잦다.
+// → 키=소문자 영어 정식 표기, 값=본문에서 찾을 동의어(영문 변형·약어·한글). 표에 없으면 키워드 자체로 매칭(무회귀).
+// 하드 필터라 과대매칭은 '결과가 더 보이는' 안전한 방향(0건 과대필터링 방지)이므로 짧은 약어도 허용한다.
+const KEYWORD_ALIASES: Record<string, string[]> = {
+  backend: ['backend', 'back-end', '백엔드', '서버 개발', '서버개발', '서버 엔지니어'],
+  frontend: ['frontend', 'front-end', '프론트엔드', '프론트'],
+  fullstack: ['fullstack', 'full-stack', '풀스택', '풀 스택'],
+  java: ['java', '자바'],
+  kotlin: ['kotlin', '코틀린'],
+  spring: ['spring', '스프링'],
+  python: ['python', '파이썬'],
+  javascript: ['javascript', '자바스크립트'],
+  typescript: ['typescript', '타입스크립트'],
+  node: ['node.js', 'nodejs', '노드'],
+  react: ['react', '리액트'],
+  vue: ['vue', '뷰'],
+  go: ['golang', 'go', '고랭'],
+  rust: ['rust', '러스트'],
+  kubernetes: ['kubernetes', 'k8s', '쿠버네티스', '쿠버'],
+  docker: ['docker', '도커'],
+  aws: ['aws', '아마존 웹 서비스'],
+  mysql: ['mysql'],
+  postgresql: ['postgresql', 'postgres', '포스트그레'],
+  redis: ['redis', '레디스'],
+  nestjs: ['nestjs', 'nest.js', '네스트'],
+  django: ['django', '장고'],
+  fastapi: ['fastapi'],
+};
+
+// 키워드를 본문에서 찾을 동의어 목록으로 확장. 표에 없으면 키워드 자체(소문자)만.
+function keywordVariants(kw: string): string[] {
+  const low = kw.toLowerCase().trim();
+  return KEYWORD_ALIASES[low] ?? [low];
+}
+
+// 키워드 필터(수집 후): 상세까지 받은 공고의 제목+본문에서 키워드(또는 그 동의어)를 찾는다.
+// 기술명은 주로 자격요건/우대사항 본문에 등장하므로(제목엔 거의 없음) 상세 기준으로 매칭한다.
 // 키워드가 없으면 모두 통과. 여러 키워드는 OR(하나라도 포함)로 본다(0건 방지).
 export function matchesKeywords(job: WantedJob, keywords: string[]): boolean {
   if (!keywords.length) return true;
   const text = [job.position, job.mainTasks, job.requirements, job.preferredPoints]
     .join(' ')
     .toLowerCase();
-  return keywords.some((kw) => text.includes(kw.toLowerCase()));
+  return keywords.some((kw) => keywordVariants(kw).some((v) => text.includes(v)));
 }
 
 export async function fetchJobsWithDetails(

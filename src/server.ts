@@ -47,7 +47,9 @@ export function createApp(deps: ServerDeps = defaultDeps): express.Express {
     const ac = new AbortController();
     let finished = false;
     // 클라이언트가 스트림을 끊으면(정상 완료 아님) 진행 중 작업을 중단해 잠금을 즉시 해제.
-    req.on('close', () => { if (!finished) ac.abort(); });
+    // ⚠️ req('close')는 express.json()이 본문을 다 읽는 즉시 발생(요청 readable 종료)하므로
+    //    파이프라인 시작 전에 abort가 터진다. 클라이언트 연결 종료는 res('close')로 감지해야 한다.
+    res.on('close', () => { if (!finished) ac.abort(); });
     try {
       // 자유텍스트가 있으면 LLM 파싱, 칩 태그와 병합. 칩만 있으면 LLM 생략.
       let search: SearchSpec = { tagIds, keywords: [] };
